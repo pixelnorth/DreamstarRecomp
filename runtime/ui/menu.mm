@@ -787,7 +787,7 @@ static void tab_display(void) {
                  L("Raises and lowers the resolution as needed to hold your FPS target, up to your screen's resolution. "
                    "The Resolution setting is set aside while it's on."),
                  now[0] ? "\n\n" : "", now);
-        if (opt_toggle("Dynamic resolution", &g_settings.dyn_res, false, d)) dyn = g_settings.dyn_res;
+        if (opt_toggle("Dynamic resolution", &g_settings.dyn_res, false, d)) dyn = g_settings.dyn_res, g_dyn_res_chosen = true;
     }
     // FPS target and Minimum resolution on Dynamic's line (user 2026-11-12): what it holds and how low it goes, both
     // Dynamic's own - greyed out while it's off (with a resolution of the player's, the frame pacer decides)

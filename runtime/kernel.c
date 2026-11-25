@@ -270,7 +270,7 @@ void kernel_run_main(KThread *t, uint64_t x0, uint64_t x1, uint64_t x2, uint64_t
     pthread_mutex_unlock(&g_klock);
     static bool watching;
     const char *e = getenv("LARECOMP_HANG_DUMP");
-    uint64_t s = e ? strtoull(e, NULL, 10) : 30;
+    uint64_t s = e ? strtoull(e, NULL, 10) : 10;  // (10, was 30: a player restarts a frozen game before 30 s)
     if (!watching && s) {
         watching = true;
         pthread_t w;
@@ -977,7 +977,7 @@ void kernel_dump_threads(const char *prefix) {
     if (locked) pthread_mutex_unlock(&g_klock);
 }
 
-// The hang dump, one facility for the whole runtime. LARECOMP_HANG_DUMP=<s> (default 30, 0 off), checked every
+// The hang dump, one facility for the whole runtime. LARECOMP_HANG_DUMP=<s> (default 10, 0 off), checked every
 // second from the main guest thread's start:
 // - the main guest thread in one kernel wait that long (startup hangs on Windows with few cores leave no other trace)
 // - the renderer's own checks (runtime/nvn/rqueue.c, kernel_hang_hooks): no frame presented twice that long after the

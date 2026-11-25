@@ -185,6 +185,7 @@ extern int g_default_res_mode;  // RES_*: likewise
 // An integrated GPU (as settings_resolve_defaults was told): the fixed 1x renders 1280x720 there, what the game itself
 // picked on such a GPU (runtime/nvn/output_scale.c)
 extern bool g_gpu_integrated;
+extern bool g_dyn_res_chosen;  // (the player set Dynamic resolution; else a default may turn it on: settings_resolve_defaults)
 // The language code to serve the game ("es", "en-US", ...): the setting, or the host locale for LANG_AUTO (en-US for a
 // language of the menus only)
 const char *settings_language(void);

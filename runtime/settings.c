@@ -185,6 +185,7 @@ const char *settings_language_name(void) {
 int g_default_upscaler = UPSCALE_SHARP;
 int g_default_res_mode = RES_MATCH;
 bool g_gpu_integrated;
+bool g_dyn_res_chosen;  // (the player set Dynamic resolution: ini "1" / "off", the menu; else "auto" in the ini)
 
 static const char *res_name(int m) {
     static char n[8];
@@ -201,6 +202,10 @@ void settings_resolve_defaults(bool integrated) {
     g_default_res_mode = RES_MATCH;  // (Dynamic is not a default until it is reliable: user 2026-10-18)
     if (g_settings.upscaler_auto) g_settings.upscaler = g_default_upscaler;
     if (g_settings.res_auto) g_settings.res_mode = g_default_res_mode;
+    // Kirby on an integrated GPU: Dynamic on unless chosen - a player's HD 620 at 1280x720 sat at 30 with frames over
+    // 16.7 ms; at the same GPU load (LARECOMP_SCALE=4.8 test) Dynamic held 60 where a fixed resolution gave 45.
+    extern bool game_is_kirby(void);
+    if (integrated && !g_dyn_res_chosen && game_is_kirby()) g_settings.dyn_res = true;
     LOG("[settings] %s GPU: upscaler %s (%s), resolution %s (%s)%s, anti-aliasing %s\n", integrated ? "integrated" : "discrete / other",
         g_settings.upscaler == UPSCALE_BILINEAR ? "bilinear" : g_settings.upscaler == UPSCALE_FSR1 ? "fsr1" : "metalfx",
         g_settings.upscaler_auto ? "default" : "chosen", res_name(g_settings.res_mode), g_settings.res_auto ? "default" : "chosen",
@@ -263,7 +268,7 @@ static bool settings_apply(const char *key, const char *val) {
         g_settings.res_auto = !strcmp(val, "auto");
         if (g_settings.res_auto) { g_settings.res_mode = g_default_res_mode; return true; }
         // ("dynamic": older files, when Dynamic was one of these - its toggle now, over Match display)
-        if (!strcmp(val, "dynamic")) { g_settings.dyn_res = true, g_settings.res_mode = RES_MATCH; return true; }
+        if (!strcmp(val, "dynamic")) { g_settings.dyn_res = true, g_settings.res_mode = RES_MATCH, g_dyn_res_chosen = true; return true; }
         g_settings.res_mode = (!strcmp(val, "75%") || !strcmp(val, "67%")) ? RES_Q75 :
                               !strcmp(val, "50%") ? RES_Q50 : !strcmp(val, "1440p") ? RES_1440 : !strcmp(val, "25%") ? RES_Q25 :
                               (n >= 1 && n <= 4) ? n : n > 4 ? 4 : RES_MATCH;  // (5x-8x were removed)
@@ -278,7 +283,8 @@ static bool settings_apply(const char *key, const char *val) {
         g_settings.shadow_quality = !strcmp(val, "2x") || !strcmp(val, "high") ? SHADOW_2X
                                   : !strcmp(val, "3x") ? SHADOW_3X : !strcmp(val, "4x") ? SHADOW_4X : !strcmp(val, "off") ? SHADOW_OFF
                                   : !strcmp(val, "0.5x") ? SHADOW_HALF : SHADOW_DEFAULT;
-    else if (!strcmp(key, "dynamic_resolution")) g_settings.dyn_res = atoi(val) != 0;
+    else if (!strcmp(key, "dynamic_resolution"))  // ("0": written by 1.0.0 whatever the player did - the old default)
+        g_settings.dyn_res = atoi(val) != 0, g_dyn_res_chosen = strcmp(val, "auto") && strcmp(val, "0");
     else if (!strcmp(key, "dynamic_min")) {
         int m = atoi(val);  // (anything else, the old 25 / 50 / 75%: 540)
         g_settings.dyn_min = m == 360 || m == 720 || m == 1080 || m == 1440 || m == 2160 ? m : 540;
@@ -610,7 +616,7 @@ static void write_settings(FILE *f) {
     }
     fprintf(f, "ambient_occlusion = %s\n", g_settings.ao_quality == AO_HIGH ? "high" : g_settings.ao_quality == AO_OFF ? "off" : "switch");
     fprintf(f, "resolution = %s\n", g_settings.res_auto ? "auto" : res_name(g_settings.res_mode));
-    fprintf(f, "dynamic_resolution = %d\n", g_settings.dyn_res);
+    fprintf(f, "dynamic_resolution = %s\n", !g_dyn_res_chosen ? "auto" : g_settings.dyn_res ? "1" : "off");
     fprintf(f, "dynamic_min = %d\n", g_settings.dyn_min);
     fprintf(f, "fps_max = %d\n", g_settings.fps_max);
     fprintf(f, "sharpen = %d\n", g_settings.sharpen);

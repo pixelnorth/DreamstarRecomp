@@ -1077,6 +1077,10 @@ static VkPresentModeKHR present_mode(void) {
     if (n > 16) n = 16;
     vkGetPhysicalDeviceSurfacePresentModesKHR(g_vk.phys, g_vk.surface, &n, m);
     for (uint32_t i = 0; i < n; i++) if (m[i] == want) return want;
+    // No mailbox (some Intel iGPU drivers): FIFO_RELAXED shows a late frame at once (a tear) instead of holding it for
+    // the next vblank - plain FIFO on a GPU-bound machine fell to 30-40 fps (LARECOMP_SCALE=4.8 test: mailbox 45,
+    // fifo 39). Frame Generation and an explicit choice keep FIFO.
+    if (!e) for (uint32_t i = 0; i < n; i++) if (m[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR) return m[i];
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 

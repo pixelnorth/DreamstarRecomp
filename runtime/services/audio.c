@@ -90,6 +90,7 @@ typedef struct {
     Effect *fx;
     SDL_AudioStream *stream;
     int out_ch;  // channels sent to the stream: 2, or 6 with Audio > Output 5.1
+    float lim;   // output limiter gain (render_frame; 0: not started)
     FILE *wav;
     uint32_t wav_bytes;
     int wav_ch;
@@ -606,13 +607,14 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
     // final mix -> device sink (FL FR FC LFE BL BR) -> stereo, or 5.1 as is (SDL3's 5.1 order is the same)
     Mix *f = find_mix(r, 0);
     if (f) apply_effects(r, 0, f);
+    float peak = 0;
     for (uint32_t i = 0; i < N; i++) {
         float ch[6] = {0};
         if (f && r->sink_used)
             for (int c = 0; c < r->sink_inputs && c < 6; c++)
                 if (r->sink_input[c] < f->bufs) ch[c] = f->buf[r->sink_input[c] * N + i] * f->volume;
         if (out_ch == 6) {
-            for (int c = 0; c < 6; c++) out[i * 6 + c] = clampf(ch[c] / 32768.f, -1, 1);
+            for (int c = 0; c < 6; c++) out[i * 6 + c] = ch[c] / 32768.f, peak = fmaxf(peak, fabsf(out[i * 6 + c]));
             continue;
         }
         float L = ch[0], R = ch[1];
@@ -620,9 +622,22 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
             L += 0.707f * ch[2] + 0.251f * ch[3] + 0.707f * ch[4];
             R += 0.707f * ch[2] + 0.251f * ch[3] + 0.707f * ch[5];
         }
-        out[i * 2] = clampf(L / 32768.f, -1, 1);
-        out[i * 2 + 1] = clampf(R / 32768.f, -1, 1);
+        out[i * 2] = L / 32768.f;
+        out[i * 2 + 1] = R / 32768.f;
+        peak = fmaxf(peak, fmaxf(fabsf(out[i * 2]), fabsf(out[i * 2 + 1])));
     }
+    // Limiter instead of a hard clip: Kirby's 5.1 mix folded to stereo went over full scale on busy moments (stage 1
+    // recording: ~2800 clipped samples in 115 s; a player found some effects such as item pickups sounded off). The
+    // gain drops at once to fit this frame and comes back over ~100 ms. LARECOMP_AUDIO_CLIP=1: the
+    // old hard clip.
+    static int hard = -1;
+    if (hard < 0) hard = getenv("LARECOMP_AUDIO_CLIP") ? 1 : 0;
+    float g0 = r->lim > 0 ? r->lim : 1, g1 = g0 + (1 - g0) * 0.05f;
+    if (!hard && peak * g1 > 0.97f) g0 = g1 = 0.97f / peak;  // (no ramp down: the whole frame fits)
+    if (hard) g0 = g1 = 1;
+    r->lim = g1;
+    uint32_t n = N * (uint32_t)out_ch;
+    for (uint32_t k = 0; k < n; k++) out[k] = clampf(out[k] * (g0 + (g1 - g0) * (float)(k / out_ch) / N), -1, 1);
 }
 
 // Output gain: menu volume times LARECOMP_AUDIO_GAIN (applied live).
@@ -675,9 +690,21 @@ static void *renderer_tick(void *arg) {
         }
         int frame_bytes = (int)(N * r->out_ch * sizeof(float));
         if (r->stream) {
+            // A device that stops taking samples (one unplugged or switched, a driver stall) left this loop waiting for
+            // good: no more renderer events, so the game's audio thread - and then the game - waited too (suspected in
+            // a player's two freezes). After 500 ms (not in the background, where the output is paused on purpose) the
+            // queue is dropped and the renderer goes on.
+            int waited = 0;
             while (SDL_GetAudioStreamQueued(r->stream) >= target && !r->quit) {
                 struct timespec ts = {0, 1000000};
                 nanosleep(&ts, NULL);
+                if (audio_paused()) waited = 0;
+                else if (++waited >= 500) {
+                    static int said;
+                    if (said++ < 8) LOG("[audio] output took no samples for 500 ms: queue dropped\n");
+                    SDL_ClearAudioStream(r->stream);
+                    break;
+                }
             }
         } else {
             clock_gettime(CLOCK_MONOTONIC, &now);

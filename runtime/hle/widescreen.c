@@ -152,10 +152,10 @@ static bool level_is_interior(void) {
     return lv[0] && strcmp(lv, "Field") != 0;
 }
 
-// Kirby's camera aspect: one 16:9 float in its rodata, read by its only getter (main 0x7000184ca0, the cameras of
-// levels, the world map and cutscenes): widened with the window each frame (pace.c kirby_fps's per-frame hook).
+// Kirby's camera aspect: one 16:9 float in its rodata, read by its only getter (main 0x7000184ca0 / 4.0.0a 0x700018dc18,
+// the cameras of levels, the world map and cutscenes): widened with the window each frame (pace.c kirby_fps's per-frame hook).
 void kirby_wide_frame(void) {
-    *(float *)(uintptr_t)0x700039a650ull = 16.0f / 9.0f * g_wide;
+    *(float *)(uintptr_t)(game_is_kirby_4_0_0() ? 0x70003b5c8cull : 0x700039a650ull) = 16.0f / 9.0f * g_wide;
 }
 // (exec.c: a draw into Kirby's own 1920x1080 target - a movie or 2D menu - this frame: shown boxed)
 void widescreen_kirby_boxed(void) { extern uint64_t renderer_exec_frame(void); g_backdrop_frame = renderer_exec_frame(); }

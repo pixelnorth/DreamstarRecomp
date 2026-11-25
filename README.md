@@ -10,7 +10,7 @@
 > **This project was made almost entirely with AI** (Anthropic's Claude, through Claude Code), directed and tested by a
 > human. You run it at your own discretion.
 
-**Dreamstar Recomp** is a static recompilation of *Kirby Star Allies* (Nintendo Switch, version 1.0.0) into a native
+**Dreamstar Recomp** is a static recompilation of *Kirby Star Allies* (Nintendo Switch, version 1.0.0 or 4.0.0a) into a native
 Windows application with a Vulkan renderer. It is a fork of [LAS Recomp](https://github.com/peiikai/LASRecomp).
 
 **No game code and no game files are included.** You need your own copy of the game, already extracted: the folder
@@ -42,7 +42,7 @@ with `exefs` and `romfs` in it. On the first launch, Dreamstar builds the game c
 
 - Windows 10 or 11, x64, a CPU with AVX2
 - A GPU with a Vulkan 1.3 driver
-- Your own extracted Kirby Star Allies 1.0.0 (`exefs` + `romfs`)
+- Your own extracted Kirby Star Allies 1.0.0 or 4.0.0a (`exefs` + `romfs`)
 
 ## Play
 

@@ -550,7 +550,7 @@ PatchSet build_patches(const std::string &version_key) {
     PATCH_ADDRESSES = &address_table(version_key);
     T = Tables();
     PatchSet ps;
-    if (version_key == "kirby_1_0_0") return ps;  // (the Zelda patches and hooks below are Zelda code)
+    if (version_key.compare(0, 6, "kirby_") == 0) return ps;  // (the Zelda patches and hooks below are Zelda code)
     auto &P = ps.patches;
     auto set = [&](uint64_t a, PatchFn f) { P[a] = f; };
 

@@ -52,6 +52,7 @@ bool game_version_select(const char *game_dir, char *why, size_t why_size);
 const GameVersion *game_version(void);
 // Kirby Star Allies (its version key kirby_*): the Zelda features and their GA() addresses (all 0) are off.
 bool game_is_kirby(void);
+bool game_is_kirby_4_0_0(void);
 // The bytes of all the game's RomFS files in version v, summed (0: unknown). A copy with every file there but another
 // total has a damaged or changed file (issue #391). Only the totals ship.
 uint64_t game_romfs_bytes(const GameVersion *v);

@@ -11,7 +11,8 @@
   },
   "prepare": {
     "program": [
-      "lasrecomp.exe"
+      "lasrecomp.exe",
+      "DreamstarRecomp.AppImage"
     ],
     "args": [
       "--prepare",
@@ -21,12 +22,12 @@
       "{game}"
     ],
     "label": "Game code (built from your game files)",
-    "timeout": 3600,
-    "version": "1"
+    "timeout": 3600
   },
   "start": {
     "program": [
-      "lasrecomp.exe"
+      "lasrecomp.exe",
+      "DreamstarRecomp.AppImage"
     ],
     "args": [
       "--new-data-dir",

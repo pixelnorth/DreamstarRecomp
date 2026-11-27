@@ -309,9 +309,9 @@ static const char *builtin_src(const char *name, int *stage) {
                "void main() {\n"
                "  vec3 s = texture(t, uv).rgb;\n"
                "  vec3 c = mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));\n"
-               "  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));\n"
-               "  float e = pow(clamp((y - 0.6) / 0.4, 0.0, 1.0), 3.0);\n"
-               "  c *= pf.x * mix(1.0, pf.y / pf.x, e);\n"
+               // (no highlight expansion: lifting the top 40% toward the peak blew highlights out and tripled the
+               // contrast - a player on an HDR display; the SDR image at the chosen white, as Windows shows SDR)
+               "  c *= pf.x;\n"
                "  c = mat3(0.6274, 0.0691, 0.0164, 0.3293, 0.9195, 0.0880, 0.0433, 0.0113, 0.8956) * c;\n"
                "  vec3 p = pow(clamp(c / 10000.0, 0.0, 1.0), vec3(0.1593017578125));\n"
                "  o = vec4(pow((0.8359375 + 18.8515625 * p) / (1.0 + 18.6875 * p), vec3(78.84375)), 1.0);\n"

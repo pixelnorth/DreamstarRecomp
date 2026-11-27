@@ -473,6 +473,7 @@ void menu_set_scene(id<MTLTexture> tex, const float uv[4]) {
 #endif
 static ImGuiContext *g_ctx;  // ours: the start screen (back to it after a reboot) has its own context
 static ImFont *g_font, *g_font_big;
+static ImFont *g_font_stats;  // (Windows: Bahnschrift, the stats box - fps_box)
 static ImFont *g_menu_font, *g_menu_font_big;  // the menu window (Baloo 2); everything else keeps g_font
 static int g_focus_tab = -99;  // put the nav cursor on this tab next frame (-100: the selected one; -99: none)
 static int g_focus_frames;
@@ -596,6 +597,19 @@ static void load_fonts(void) {
     }
     if (!g_font) g_font = io.Fonts->AddFontDefault(), i18n_merge_fonts(io.Fonts, 13);
     if (!g_font_big) g_font_big = g_font;
+#ifdef _WIN32
+    {   // the stats box's face (fps_box): Bahnschrift, Windows' DIN - the look of a GPU vendor overlay
+        char wf[512];
+        ImFontConfig sc;
+        sc.FontDataOwnedByAtlas = true;
+        snprintf(wf, sizeof wf, "%s\\Fonts\\bahnschrift.ttf", getenv("WINDIR") ? getenv("WINDIR") : "C:\\Windows");
+        FILE *f = fopen(wf, "rb");
+        if (f) {
+            fclose(f);
+            g_font_stats = io.Fonts->AddFontFromFileTTF(wf, 34, &sc);
+        }
+    }
+#endif
     if (!g_menu_font || !g_menu_font_big) g_menu_font = g_font, g_menu_font_big = g_font_big;
 }
 
@@ -1932,6 +1946,7 @@ extern "C" bool game_camera_zone_id(uint32_t *id);
 // Show FPS's counter (user 2026-11-12): the frame rate alone in the advanced overlay's box, its number bright and "fps"
 // dim beside it (it showed Dynamic's resolution under it too: that's the advanced overlay's now)
 static void fps_box(float scale) {
+    ImFont *font = g_font_stats ? g_font_stats : ImGui::GetFont();
     // Kirby (user 2026-11-26, after a PC monitoring overlay): two columns of figures - FPS, GPU / memory / CPU
     // temperatures on the left, GPU / CPU load, hotspot and system memory on the right (platform/hwmon_win.c; "N/A"
     // where the PC doesn't report one)
@@ -1960,8 +1975,7 @@ static void fps_box(float scale) {
     put(cells[6], hw(PLAT_HW_CPU_TEMP), "%.1f \xC2\xB0" "C");
     put(cells[7], hw(PLAT_HW_SYS_MEM_GB), "%.1f GB");
 
-    ImFont *font = ImGui::GetFont();
-    float fs = ImGui::GetFontSize() * fk * 0.62f, ls = fs * 0.82f, row = fs * 1.35f;
+    float fs = 34 * scale * 0.5f, ls = fs * 0.9f, row = fs * 1.3f;
     auto tw = [&](float sz, const char *t) { return font->CalcTextSizeA(sz, FLT_MAX, 0, t).x; };
     float colw[2][2] = {{0, 0}, {0, 0}};  // per column: label width, value width
     for (int k = 0; k < 8; k++) {
@@ -1970,26 +1984,22 @@ static void fps_box(float scale) {
     }
     float gap = fs * 1.4f, sep = fs * 1.8f;
     float w = colw[0][0] + gap + colw[0][1] + sep + colw[1][0] + gap + colw[1][1], h = row * 4;
-    ImGui::SetNextWindowBgAlpha(0.72f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4 * scale);
+    ImGui::SetNextWindowBgAlpha(0.78f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12 * scale, 8 * scale));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.02f, 0.03f, 0.05f, 1));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.04f, 0.04f, 1));
     ImGui::Begin("##fps", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
     ImDrawList *dl = ImGui::GetWindowDrawList();
     ImVec2 p = ImGui::GetCursorScreenPos();
-    const ImU32 c_label = IM_COL32(220, 214, 60, 255), c_value = IM_COL32(245, 245, 245, 255);
+    const ImU32 c_label = IM_COL32(205, 212, 40, 255), c_value = IM_COL32(255, 255, 255, 255);
     for (int k = 0; k < 8; k++) {
         int c = k % 2, r = k / 2;
         float x = p.x + (c ? colw[0][0] + gap + colw[0][1] + sep : 0), y = p.y + r * row;
         dl->AddText(font, ls, ImVec2(x, y + (fs - ls) * 0.6f), c_label, cells[k].label);
         float vx = x + colw[c][0] + gap + colw[c][1] - tw(fs, cells[k].value);  // (values right-aligned)
         dl->AddText(font, fs, ImVec2(vx, y), c_value, cells[k].value);
-    }
-    if (h > 0) {  // the column divider
-        float x = p.x + colw[0][0] + gap + colw[0][1] + sep * 0.5f;
-        dl->AddLine(ImVec2(x, p.y + 2), ImVec2(x, p.y + h - row * 0.3f), IM_COL32(255, 255, 255, 40));
     }
     ImGui::Dummy(ImVec2(w, h - row * 0.3f));
     ImGui::End();
@@ -2308,7 +2318,10 @@ void menu_render(void *cmd, uint32_t target_w, uint32_t target_h) {
         ImGui::SetNextWindowPos(ImVec2(right ? io.DisplaySize.x - m : m, bottom ? io.DisplaySize.y - m : m), 0,
                                 ImVec2(right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f));
         if (g_settings.fps_advanced) perf_overlay(scale);
-        else fps_box(scale);
+        else {  // (the stats box: top centre, whatever the corner - user 2026-11-27)
+            ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, m), 0, ImVec2(0.5f, 0));
+            fps_box(scale);
+        }
     }
 
     if (race) race_overlay_draw(io.DisplaySize, g_menu_font_big, scale);

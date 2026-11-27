@@ -156,7 +156,7 @@ SHADERC  ?= $(shell pkg-config --libs shaderc 2>/dev/null || echo -lshaderc)
 # game finds those libraries when run (the AppImage's own is set by tools/linux/package.sh)
 LDFLAGS  := -fuse-ld=lld -rdynamic $(if $(DEPS),-L$(DEPS)/lib -Wl$(comma)-rpath$(comma)$(abspath $(DEPS))/lib) \
             -lSDL3 -lavformat -lavfilter -lavcodec -lavutil -lswscale -lvulkan $(SHADERC) -lpthread -ldl -lm
-BACKEND_SRC := $(wildcard runtime/nvn/vulkan/*.c) $(wildcard runtime/nvn/vulkan/*.cpp)
+BACKEND_SRC := $(wildcard runtime/nvn/vulkan/*.c) $(wildcard runtime/nvn/vulkan/*.cpp) runtime/platform/hwmon_linux.c
 BACKEND_OBJ := $(patsubst runtime/%.cpp,$(B)/rt/%.o,$(patsubst runtime/%.c,$(B)/rt/%.o,$(BACKEND_SRC)))
 IMGUI_OBJ += $(B)/imgui/imgui_impl_vulkan.o
 UIFLAGS  := -x c++  # the .mm UI sources are plain C++ apart from __APPLE__ blocks

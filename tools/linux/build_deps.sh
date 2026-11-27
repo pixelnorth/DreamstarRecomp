@@ -78,14 +78,15 @@ if [ ! -f "$P/lib/libSDL3.so" ]; then
     cmake --build "$W/sdl/build" -j"$JOBS" && cmake --install "$W/sdl/build"
 fi
 
-if [ ! -f "$P/lib/libavcodec.so" ]; then
+if [ ! -f "$P/lib/libavfilter.so" ]; then  # (avfilter: runtime/hle/movie60.c)
     unpack ffmpeg-9.0.2.tar.xz ffmpeg
     (cd "$W/ffmpeg" && ./configure --prefix="$P" "${FF_CROSS[@]}" --arch="$ARCH" --target-os=linux \
         --enable-shared --disable-static --enable-pic \
-        --disable-autodetect --disable-programs --disable-doc --disable-network --disable-avdevice --disable-avfilter \
+        --disable-autodetect --disable-programs --disable-doc --disable-network --disable-avdevice \
         --disable-swresample --disable-everything \
         --enable-protocol=file --enable-demuxer=matroska,mov \
         --enable-decoder=vp9,vp8,vorbis,opus,h264,aac --enable-parser=vp9,vp8,vorbis,opus,h264,aac \
+        --enable-filter=minterpolate,format,buffer,buffersink \
         && make -j"$JOBS" && make install)
 fi
 # (the library's own license and configure line: avcodec_license(), avcodec_configuration(); its .pc file has neither)

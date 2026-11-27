@@ -1952,8 +1952,8 @@ static void fps_box(float scale) {
     // where the PC doesn't report one)
     const float fk = 1.15f;
     scale *= fk;
-#ifdef _WIN32
-    auto hw = [](int k) { return plat_hw_stat(k); };
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
+    auto hw = [](int k) { return plat_hw_stat(k); };  // (platform/hwmon_win.c, hwmon_linux.c)
 #else
     auto hw = [](int) { return PLAT_HW_UNKNOWN; };
 #endif

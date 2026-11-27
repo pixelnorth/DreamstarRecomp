@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>  // (rmdir)
 #include <SDL3/SDL.h>
 #ifdef _WIN32
 #include <windows.h>

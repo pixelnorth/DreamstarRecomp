@@ -15,6 +15,9 @@
 
 #include "../hle.h"
 #include "../platform.h"
+#ifndef _WIN32
+#include <unistd.h>  // (rmdir)
+#endif
 
 #define BACKUPS_KEPT 10
 

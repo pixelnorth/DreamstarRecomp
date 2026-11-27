@@ -3,6 +3,7 @@
 #include <SDL3/SDL_surface.h>
 #include <SDL3/SDL_timer.h>
 #include <float.h>
+#include <sys/stat.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdlib.h>

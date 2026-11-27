@@ -2513,6 +2513,74 @@ static void kirby_star(ImDrawList *dl, ImVec2 c, float r, float spin, ImU32 col)
     }
     for (int i = 0; i < 10; i++) dl->AddTriangleFilled(c, p[i], p[(i + 1) % 10], col);
 }
+// a soft round glow: rings fading out (ImGui has no blur)
+static void kirby_glow(ImDrawList *dl, ImVec2 c, float r, ImU32 rgb, float a) {
+    for (int i = 28; i >= 1; i--) {  // (many faint rings: few strong ones showed as bands)
+        float k = i / 28.0f;
+        dl->AddCircleFilled(c, r * k, (rgb & 0x00FFFFFF) | ((ImU32)(255 * a * 0.07f * (1 - k)) << 24), 48);
+    }
+}
+// "Dream sky" start screen: a night gradient, drifting nebulae, two layers of twinkling stars, shooting stars, and
+// clouds lit from below along the bottom edge. Everything from a hash of its index: the same sky each launch.
+static void kirby_sky(ImDrawList *bg, ImVec2 ds, float s) {
+    float t = (float)ImGui::GetTime();
+    ImVec2 mid(0, ds.y * 0.62f);
+    bg->AddRectFilledMultiColor(ImVec2(0, 0), ImVec2(ds.x, mid.y), IM_COL32(16, 10, 48, 255), IM_COL32(30, 14, 70, 255),
+                                IM_COL32(120, 50, 140, 255), IM_COL32(86, 36, 120, 255));
+    bg->AddRectFilledMultiColor(ImVec2(0, mid.y), ds, IM_COL32(86, 36, 120, 255), IM_COL32(120, 50, 140, 255),
+                                IM_COL32(255, 150, 170, 255), IM_COL32(240, 120, 180, 255));
+    struct { float x, y, r; ImU32 c; } neb[] = {{0.18f, 0.30f, 0.45f, IM_COL32(150, 70, 220, 0)},
+                                                 {0.78f, 0.22f, 0.40f, IM_COL32(60, 110, 240, 0)},
+                                                 {0.60f, 0.70f, 0.50f, IM_COL32(255, 110, 190, 0)}};
+    for (int i = 0; i < 3; i++) {
+        float dx = sinf(t * 0.05f + i * 2) * 0.03f, dy = cosf(t * 0.04f + i) * 0.02f;
+        kirby_glow(bg, ImVec2((neb[i].x + dx) * ds.x, (neb[i].y + dy) * ds.y), neb[i].r * ds.x, neb[i].c, 0.55f);
+    }
+    for (int i = 0; i < 160; i++) {  // tiny stars (far), slow drift left
+        uint32_t h = (uint32_t)(i + 1) * 2654435761u;
+        float x = fmodf((h % 10007) / 10007.0f * ds.x - t * (2 + h % 3) * s + 4 * ds.x, ds.x);
+        float y = (h >> 12) % 10007 / 10007.0f * ds.y * 0.85f;
+        float tw = 0.45f + 0.55f * (0.5f + 0.5f * sinf(t * (1 + (h >> 22) % 5 * 0.4f) + i));
+        float r = (0.8f + (h >> 8) % 3 * 0.5f) * s;
+        bg->AddCircleFilled(ImVec2(x, y), r, IM_COL32(255, 250, 255, (int)(200 * tw)), 8);
+    }
+    for (int i = 0; i < 14; i++) {  // big sparkling stars: a cross of light and a glow
+        uint32_t h = (uint32_t)(i + 7) * 2246822519u;
+        ImVec2 c((h % 1000) / 1000.0f * ds.x, (h >> 10) % 1000 / 1000.0f * ds.y * 0.7f);
+        float k = 0.5f + 0.5f * sinf(t * (0.8f + (h >> 20) % 5 * 0.3f) + i * 1.7f), l = (8 + (h >> 16) % 10) * s * (0.6f + 0.4f * k);
+        ImU32 w = IM_COL32(255, 245, 255, (int)(220 * k));
+        kirby_glow(bg, c, l * 1.6f, IM_COL32(255, 220, 255, 0), 0.6f * k);
+        bg->AddLine(ImVec2(c.x - l, c.y), ImVec2(c.x + l, c.y), w, 1.3f * s);
+        bg->AddLine(ImVec2(c.x, c.y - l), ImVec2(c.x, c.y + l), w, 1.3f * s);
+        bg->AddCircleFilled(c, 1.8f * s, IM_COL32(255, 255, 255, (int)(255 * k)));
+    }
+    for (int i = 0; i < 2; i++) {  // shooting stars, one every few seconds each
+        float per = 7.0f + i * 4.3f, u = fmodf(t + i * 3.1f, per) / 0.9f;
+        if (u > 1) continue;
+        uint32_t h = (uint32_t)(int)((t + i * 3.1f) / per + i * 31) * 2654435761u;
+        ImVec2 a((0.25f + (h % 600) / 1000.0f) * ds.x, (0.05f + (h >> 12) % 300 / 1000.0f) * ds.y);
+        ImVec2 d(-0.35f * ds.x, 0.22f * ds.x), hd(a.x + d.x * u, a.y + d.y * u);
+        float fade = sinf(u * 3.14159265f);
+        for (int k = 0; k < 12; k++) {
+            float f0 = fmaxf(0, u - 0.02f * (k + 1)), f1 = fmaxf(0, u - 0.02f * k);
+            bg->AddLine(ImVec2(a.x + d.x * f0, a.y + d.y * f0), ImVec2(a.x + d.x * f1, a.y + d.y * f1),
+                        IM_COL32(255, 240, 255, (int)(230 * fade * (1 - k / 12.0f))), (2.6f - k * 0.18f) * s);
+        }
+        kirby_glow(bg, hd, 14 * s, IM_COL32(255, 230, 255, 0), fade);
+    }
+    for (int layer = 0; layer < 2; layer++) {  // clouds: overlapping circles, a lit top edge
+        ImU32 body = layer ? IM_COL32(255, 196, 220, 235) : IM_COL32(214, 140, 200, 200);
+        float base = ds.y + (layer ? 10 : -30) * s, sp = (layer ? 9 : 5) * s;
+        for (int i = 0; i < 9; i++) {
+            uint32_t h = (uint32_t)(i + 3 + layer * 50) * 2654435761u;
+            float w = ds.x / 6.0f, x = fmodf(i * w * 1.1f + t * sp + (h % 100) * s, ds.x + 2 * w) - w;
+            float r = (70 + (h >> 8) % 60) * s * (layer ? 1.0f : 1.2f);
+            bg->AddCircleFilled(ImVec2(x, base), r, body, 40);
+            bg->AddCircleFilled(ImVec2(x + r * 0.8f, base + r * 0.25f), r * 0.75f, body, 40);
+            bg->AddCircleFilled(ImVec2(x - r * 0.8f, base + r * 0.3f), r * 0.7f, body, 40);
+        }
+    }
+}
 // a section's small capitals label
 static void kirby_label(float x0, const char *t) {
     ImGui::SetCursorPosX(x0);
@@ -2557,27 +2625,22 @@ static void kirby_saves(float x0) {
     }
 }
 static void kirby_page(float s, ImVec2 ds, const std::string &status, bool &play) {
-    ImDrawList *bg = ImGui::GetBackgroundDrawList();
-    bg->AddRectFilledMultiColor(ImVec2(0, 0), ds, IM_COL32(255, 150, 190, 255), IM_COL32(255, 196, 120, 255),
-                                IM_COL32(120, 170, 255, 255), IM_COL32(190, 120, 230, 255));
-    bg->AddRectFilled(ImVec2(0, 0), ds, IM_COL32(20, 10, 40, 90));
-    {   // stars drifting up, twinkling (fixed places from a small hash: the same each launch)
-        float t = (float)ImGui::GetTime();
-        for (int i = 0; i < 26; i++) {
-            uint32_t h = (uint32_t)i * 2654435761u;
-            float x = (h % 1000) / 1000.0f * ds.x, sp = 6 + (h >> 10) % 14, r = (6 + (h >> 16) % 14) * s;
-            float y = fmodf((h >> 4) % 1000 / 1000.0f * ds.y - t * sp * s + 4 * ds.y, ds.y + 4 * r) - 2 * r;
-            float a = 0.10f + 0.10f * sinf(t * (0.6f + (h >> 20) % 7 * 0.15f) + i);
-            kirby_star(bg, ImVec2(x, y), r, t * 0.2f + i, IM_COL32(255, 255, 255, (int)(255 * a)));
-        }
-    }
+    kirby_sky(ImGui::GetBackgroundDrawList(), ds, s);
     float x0 = 90 * s;
     ImDrawList *dl = ImGui::GetWindowDrawList();
     // the title: a yellow star, then the name
     ImGui::PushFont(g_font_title);
     float th = ImGui::GetFontSize();
     ImVec2 tp = ImGui::GetWindowPos();
-    kirby_star(dl, ImVec2(tp.x + x0 + th * 0.42f, tp.y + 50 * s + th * 0.55f), th * 0.42f, 0.15f, IM_COL32(255, 214, 64, 255));
+    {   // the warp star: glow, a gentle bob and sway, a lighter star inside
+        float tt = (float)ImGui::GetTime();
+        ImVec2 c(tp.x + x0 + th * 0.42f, tp.y + 50 * s + th * 0.55f + sinf(tt * 1.6f) * 5 * s);
+        float sw = 0.15f + sinf(tt * 0.9f) * 0.12f;
+        kirby_glow(dl, c, th * 1.1f, IM_COL32(255, 220, 90, 0), 0.9f);
+        kirby_star(dl, ImVec2(c.x + 3 * s, c.y + 5 * s), th * 0.44f, sw, IM_COL32(120, 40, 90, 120));
+        kirby_star(dl, c, th * 0.44f, sw, IM_COL32(255, 200, 40, 255));
+        kirby_star(dl, ImVec2(c.x - th * 0.03f, c.y - th * 0.04f), th * 0.27f, sw, IM_COL32(255, 240, 150, 255));
+    }
     ImGui::SetCursorPos(ImVec2(x0 + th * 0.95f, 50 * s));
     const char *t = "Dreamstar";
     text_fx(dl, ImGui::GetFont(), th, ImGui::GetCursorScreenPos(), IM_COL32(255, 245, 250, 255), IM_COL32(255, 170, 210, 255), t, 3 * s);
@@ -2648,8 +2711,15 @@ static void kirby_page(float s, ImVec2 ds, const std::string &status, bool &play
     float card_bottom = ImGui::GetCursorPosY() + pad - ImGui::GetStyle().ItemSpacing.y;
     dl->ChannelsSetCurrent(0);
     ImVec2 wp = ImGui::GetWindowPos();
-    dl->AddRectFilled(ImVec2(wp.x + cx, wp.y + cy), ImVec2(wp.x + cx + cw, wp.y + card_bottom), IM_COL32(30, 12, 50, 110), 26 * s);
-    dl->AddRect(ImVec2(wp.x + cx, wp.y + cy), ImVec2(wp.x + cx + cw, wp.y + card_bottom), IM_COL32(255, 255, 255, 60), 26 * s, 0, 2 * s);
+    {   // glass: a shadow, a dark tint, a rim that shifts pink -> blue
+        ImVec2 a(wp.x + cx, wp.y + cy), b(wp.x + cx + cw, wp.y + card_bottom);
+        dl->AddRectFilled(ImVec2(a.x + 8 * s, a.y + 14 * s), ImVec2(b.x + 8 * s, b.y + 14 * s), IM_COL32(10, 4, 30, 90), 28 * s);
+        dl->AddRectFilled(a, b, IM_COL32(24, 12, 60, 150), 28 * s);
+        float tt = (float)ImGui::GetTime(), k = 0.5f + 0.5f * sinf(tt * 0.7f);
+        ImU32 rim = IM_COL32((int)(255 - 120 * k), (int)(150 + 40 * k), 255, 140);
+        dl->AddRect(a, b, rim, 28 * s, 0, 2.5f * s);
+        dl->AddRect(ImVec2(a.x - 3 * s, a.y - 3 * s), ImVec2(b.x + 3 * s, b.y + 3 * s), (rim & 0x00FFFFFF) | 0x30000000, 31 * s, 0, 4 * s);
+    }
     dl->ChannelsMerge();
     ImGui::PopStyleColor(8);
     ImGui::PopStyleVar(3);
@@ -2662,13 +2732,37 @@ static void kirby_page(float s, ImVec2 ds, const std::string &status, bool &play
     static bool focused;
     if (!focused && status.empty()) { ImGui::SetKeyboardFocusHere(); focused = true; }
     ImGui::BeginDisabled(!status.empty());
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.93f, 0.25f, 0.5f, 1));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 0.4f, 0.62f, 1));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.8f, 0.18f, 0.42f, 1));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, 0.12f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0.12f));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 55 * s);
     ImVec2 pa = ImGui::GetCursorScreenPos(), psz(380 * s, 100 * s);
-    dl->AddRectFilled(ImVec2(pa.x + 6 * s, pa.y + 10 * s), ImVec2(pa.x + psz.x + 6 * s, pa.y + psz.y + 10 * s),
-                      IM_COL32(60, 10, 40, 90), 55 * s);  // (a soft shadow)
+    {
+        float tt = (float)ImGui::GetTime(), pulse = 0.5f + 0.5f * sinf(tt * 2.2f), r = 50 * s;
+        ImVec2 b(pa.x + psz.x, pa.y + psz.y);
+        if (status.empty())
+            for (int i = 6; i >= 1; i--)
+                dl->AddRectFilled(ImVec2(pa.x - i * 4 * s, pa.y - i * 4 * s), ImVec2(b.x + i * 4 * s, b.y + i * 4 * s),
+                                  IM_COL32(255, 110, 190, (int)((10 + 14 * pulse) * (7 - i) / 6)), r + i * 4 * s);
+        dl->AddRectFilled(ImVec2(pa.x + 4 * s, pa.y + 10 * s), ImVec2(b.x + 4 * s, b.y + 10 * s), IM_COL32(60, 10, 60, 110), r);
+        auto col = [](float f) { return IM_COL32((int)(255 - 40 * f), (int)(110 + 20 * f), (int)(170 + 70 * f), 255); };
+        dl->AddRectFilled(pa, b, col(0), r);  // the pill's gradient: caps solid, strips between them
+        dl->AddRectFilled(ImVec2(b.x - 2 * r, pa.y), b, col(1), r, ImDrawFlags_RoundCornersRight);
+        dl->PushClipRect(pa, b, true);
+        for (int i = 0, n = 24; i < n; i++) {
+            float w = (psz.x - 2 * r) / n, x = pa.x + r + w * i;
+            dl->AddRectFilled(ImVec2(x, pa.y), ImVec2(x + w + 1, b.y), col((i + 0.5f) / n));
+        }
+        dl->AddRectFilled(ImVec2(pa.x + 10 * s, pa.y + 6 * s), ImVec2(b.x - 10 * s, pa.y + psz.y * 0.45f), IM_COL32(255, 255, 255, 50), r * 0.8f);
+        float u = fmodf(tt, 3.5f) / 1.2f;  // shine sweep
+        if (u < 1 && status.empty()) {
+            float sx = pa.x - 60 * s + (psz.x + 120 * s) * u;
+            dl->AddQuadFilled(ImVec2(sx, pa.y), ImVec2(sx + 40 * s, pa.y), ImVec2(sx + 10 * s, b.y), ImVec2(sx - 30 * s, b.y),
+                              IM_COL32(255, 255, 255, 70));
+        }
+        dl->PopClipRect();
+        if (!status.empty()) dl->AddRectFilled(pa, b, IM_COL32(40, 20, 60, 140), r);
+    }
     if (ImGui::Button(i18n_upper(L("Play")).c_str(), psz)) play = true;
     if (status.empty()) {  // a star twinkles on PLAY's corner now and then
         float tt = fmodf((float)ImGui::GetTime(), 2.8f);

@@ -1932,25 +1932,69 @@ extern "C" bool game_camera_zone_id(uint32_t *id);
 // Show FPS's counter (user 2026-11-12): the frame rate alone in the advanced overlay's box, its number bright and "fps"
 // dim beside it (it showed Dynamic's resolution under it too: that's the advanced overlay's now)
 static void fps_box(float scale) {
-    const float fk = 1.5f;  // (as the advanced overlay)
+    // Kirby (user 2026-11-26, after a PC monitoring overlay): two columns of figures - FPS, GPU / memory / CPU
+    // temperatures on the left, GPU / CPU load, hotspot and system memory on the right (platform/hwmon_win.c; "N/A"
+    // where the PC doesn't report one)
+    const float fk = 1.15f;
     scale *= fk;
-    ImGui::SetNextWindowBgAlpha(0.62f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8 * scale);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12 * scale, 9 * scale));
+#ifdef _WIN32
+    auto hw = [](int k) { return plat_hw_stat(k); };
+#else
+    auto hw = [](int) { return PLAT_HW_UNKNOWN; };
+#endif
+    char fps[16];
+    snprintf(fps, sizeof fps, "%.0f", g_ov_cache ? g_fps_shown : ImGui::GetIO().Framerate);
+    struct Cell { const char *label; char value[24]; };
+    Cell cells[8] = {{"FPS", ""}, {"GPU UTIL", ""}, {"GPU TEMP", ""}, {"GPU HOTSPOT", ""},
+                     {"GPU MEM TEMP", ""}, {"CPU UTIL", ""}, {"CPU TEMP", ""}, {"SYSTEM MEM UTIL", ""}};
+    snprintf(cells[0].value, 24, "%s", fps);
+    auto put = [&](Cell &c, float v, const char *fmt) {
+        if (v <= PLAT_HW_UNKNOWN) snprintf(c.value, 24, "N/A");
+        else snprintf(c.value, 24, fmt, v);
+    };
+    put(cells[1], hw(PLAT_HW_GPU_LOAD), "%.0f %%");
+    put(cells[2], hw(PLAT_HW_GPU_TEMP), "%.0f \xC2\xB0" "C");
+    put(cells[3], hw(PLAT_HW_GPU_HOTSPOT), "%.0f \xC2\xB0" "C");
+    put(cells[4], hw(PLAT_HW_GPU_MEM_TEMP), "%.0f \xC2\xB0" "C");
+    put(cells[5], hw(PLAT_HW_CPU_LOAD), "%.0f %%");
+    put(cells[6], hw(PLAT_HW_CPU_TEMP), "%.1f \xC2\xB0" "C");
+    put(cells[7], hw(PLAT_HW_SYS_MEM_GB), "%.1f GB");
+
+    ImFont *font = ImGui::GetFont();
+    float fs = ImGui::GetFontSize() * fk * 0.62f, ls = fs * 0.82f, row = fs * 1.35f;
+    auto tw = [&](float sz, const char *t) { return font->CalcTextSizeA(sz, FLT_MAX, 0, t).x; };
+    float colw[2][2] = {{0, 0}, {0, 0}};  // per column: label width, value width
+    for (int k = 0; k < 8; k++) {
+        colw[k % 2][0] = fmaxf(colw[k % 2][0], tw(ls, cells[k].label));
+        colw[k % 2][1] = fmaxf(colw[k % 2][1], tw(fs, cells[k].value));
+    }
+    float gap = fs * 1.4f, sep = fs * 1.8f;
+    float w = colw[0][0] + gap + colw[0][1] + sep + colw[1][0] + gap + colw[1][1], h = row * 4;
+    ImGui::SetNextWindowBgAlpha(0.72f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4 * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12 * scale, 8 * scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.02f, 0.03f, 0.05f, 1));
     ImGui::Begin("##fps", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                                     ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing);
     ImDrawList *dl = ImGui::GetWindowDrawList();
-    ImFont *font = ImGui::GetFont();
-    float big = ImGui::GetFontSize() * fk, small = big * 0.5f;
-    char b[32];
-    snprintf(b, sizeof b, "%.0f", g_ov_cache ? g_fps_shown : ImGui::GetIO().Framerate);
     ImVec2 p = ImGui::GetCursorScreenPos();
-    float nw = font->CalcTextSizeA(big, FLT_MAX, 0, b).x, gap = small * 0.4f;
-    dl->AddText(font, big, p, IM_COL32(255, 255, 255, 255), b);
-    dl->AddText(font, small, ImVec2(p.x + nw + gap, p.y + big - small * 1.25f), IM_COL32(180, 178, 169, 255), "fps");
-    ImGui::Dummy(ImVec2(nw + gap + font->CalcTextSizeA(small, FLT_MAX, 0, "fps").x, big));
+    const ImU32 c_label = IM_COL32(220, 214, 60, 255), c_value = IM_COL32(245, 245, 245, 255);
+    for (int k = 0; k < 8; k++) {
+        int c = k % 2, r = k / 2;
+        float x = p.x + (c ? colw[0][0] + gap + colw[0][1] + sep : 0), y = p.y + r * row;
+        dl->AddText(font, ls, ImVec2(x, y + (fs - ls) * 0.6f), c_label, cells[k].label);
+        float vx = x + colw[c][0] + gap + colw[c][1] - tw(fs, cells[k].value);  // (values right-aligned)
+        dl->AddText(font, fs, ImVec2(vx, y), c_value, cells[k].value);
+    }
+    if (h > 0) {  // the column divider
+        float x = p.x + colw[0][0] + gap + colw[0][1] + sep * 0.5f;
+        dl->AddLine(ImVec2(x, p.y + 2), ImVec2(x, p.y + h - row * 0.3f), IM_COL32(255, 255, 255, 40));
+    }
+    ImGui::Dummy(ImVec2(w, h - row * 0.3f));
     ImGui::End();
-    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
 }
 
 static void perf_overlay(float scale) {

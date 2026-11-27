@@ -279,6 +279,14 @@ static void pick_device(void) {
     free(qp);
     if (g_vk.qfam == UINT32_MAX) FATAL("no graphics+present queue\n");
     LOG("[vk] using %s\n", g_vk.props.deviceName);
+#ifdef _WIN32
+    {   // the adapter's LUID: the stats box reads that adapter's temperature and load (platform/hwmon_win.c)
+        VkPhysicalDeviceIDProperties id = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+        VkPhysicalDeviceProperties2 p2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &id};
+        vkGetPhysicalDeviceProperties2(g_vk.phys, &p2);
+        if (id.deviceLUIDValid) plat_hw_set_gpu_luid(id.deviceLUID);
+    }
+#endif
     settings_resolve_defaults(g_vk.props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
     // On by default on integrated GPUs only: lean usage and the SMAA stencil measured faster on an Intel UHD 770 and
     // slightly slower on an RTX 3080 Ti; skipping the per-frame target clears saved 3.7 ms on the UHD 770 (2x) with

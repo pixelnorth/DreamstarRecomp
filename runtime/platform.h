@@ -110,6 +110,12 @@ int plat_cpu_count(void);  // logical cores this process may run on (its affinit
 void plat_thread_guest(int prio);  // a guest thread's host scheduling class from its Switch priority (lower = more urgent)
 uint64_t plat_thread_cpu_ns(void);  // the calling thread's CPU time so far (user + system; diagnostics)
 uint64_t plat_mem_used_bytes(void);  // this process's memory in use (0: unknown; Show advanced information)
+// The stats box's hardware figures (Windows: platform/hwmon_win.c; NaN: unknown or not on this platform)
+enum { PLAT_HW_GPU_LOAD, PLAT_HW_GPU_TEMP, PLAT_HW_GPU_MEM_TEMP, PLAT_HW_GPU_HOTSPOT, PLAT_HW_CPU_LOAD, PLAT_HW_CPU_TEMP,
+       PLAT_HW_SYS_MEM_GB };
+#define PLAT_HW_UNKNOWN (-1e9f)
+float plat_hw_stat(int which);  // (PLAT_HW_UNKNOWN: not known)
+void plat_hw_set_gpu_luid(const uint8_t luid[8]);
 // The calling thread is one of the frame's critical threads: on Windows, no power throttling (EcoQoS) for it and, on a
 // hybrid CPU, a preference for the performance cores (selected CPU sets); on Linux with big and little cores (arm64
 // big.LITTLE, Intel hybrid), its affinity limited to the big ones. LARECOMP_PCORE=0: off. Elsewhere a no-op.

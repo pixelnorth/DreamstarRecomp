@@ -43,6 +43,7 @@ GameMainKind game_main_build_id(const char *main_path, char hex[41]);
 const GameVersion *game_version_of_main(const char *main_path);
 // The version of the game files in game_dir (its exefs/main), or NULL.
 const GameVersion *game_version_of(const char *game_dir);
+void game_dir_fix_case(const char *game_dir);  // (Linux: ExeFS / RomFS folders get exefs / romfs links)
 // The release label of the exefs folder exefs_dir: "1.0.1" or "1.1.0" when its main.npdm tells releases that share one
 // main program apart (by its SHA-256), else the version's label. Display and the log only. NULL: unknown version.
 const char *game_release_label(const char *exefs_dir, char *buf, size_t size);

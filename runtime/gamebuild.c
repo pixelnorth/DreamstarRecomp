@@ -698,6 +698,7 @@ bool gamebuild_run(const char *game_dir, const GameBuildOpts *o, char *why, size
 #endif
     // (lib_id: the generation's id; the library's is g_full_id, that plus the game's build ID)
     const char *lib_name = ios ? GAMELIB_IOS_NAME : GAMELIB_NAME, *lib_id = ios ? GAMELIB_IOS_ID : GAMELIB_ID;
+    game_dir_fix_case(game_dir);
     char work[1100], tmp[1100];
     snprintf(work, sizeof work, "%s" SEP ".gamebuild", game_dir);
     snprintf(tmp, sizeof tmp, "%s" SEP "%s.tmp", work, lib_name);

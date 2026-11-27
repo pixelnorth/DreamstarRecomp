@@ -4,6 +4,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(_WIN32)
+#include <dirent.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "rt.h"
 
@@ -76,7 +82,33 @@ const GameVersion *game_version_of_main(const char *main_path) {
     return read_build_id(main_path, id) ? game_version_by_build_id(id) : NULL;
 }
 
+// Folders named ExeFS / RomFS (as some dumping tools write them): Windows and macOS find exefs / romfs whatever the
+// case, Linux doesn't and the game code wasn't built (a Steam Deck player, 2026-11-27). A lowercase link to each.
+void game_dir_fix_case(const char *game_dir) {
+#if !defined(_WIN32)
+    static const char *const want[] = {"exefs", "romfs"};
+    for (int i = 0; i < 2; i++) {
+        char p[1100];
+        snprintf(p, sizeof p, "%s/%s", game_dir, want[i]);
+        struct stat st;
+        if (!stat(p, &st)) continue;
+        DIR *d = opendir(game_dir);
+        if (!d) return;
+        struct dirent *e;
+        while ((e = readdir(d)))
+            if (!strcasecmp(e->d_name, want[i]) && strcmp(e->d_name, want[i])) {
+                if (symlink(e->d_name, p)) LOG("[game] %s: no link to %s\n", p, e->d_name);
+                break;
+            }
+        closedir(d);
+    }
+#else
+    (void)game_dir;
+#endif
+}
+
 const GameVersion *game_version_of(const char *game_dir) {
+    game_dir_fix_case(game_dir);
     char path[1100];
     snprintf(path, sizeof path, "%s/exefs/main", game_dir);
     return game_version_of_main(path);
@@ -85,6 +117,7 @@ const GameVersion *game_version_of(const char *game_dir) {
 bool game_version_select(const char *game_dir, char *why, size_t why_size) {
     uint8_t id[20];
     char exefs[1100], path[1100];
+    game_dir_fix_case(game_dir);
     snprintf(exefs, sizeof exefs, "%s/exefs", game_dir);
     snprintf(path, sizeof path, "%s/main", exefs);
     GameMainKind k = read_main(path, id);

@@ -11,7 +11,9 @@
 
 #define BACKDROP_HASHES 0x71fe31bbf03c3515ull
 
-static float g_wide = 1.0f;  // output aspect divided by 16:9 (1 = normal)
+static float g_wide = 1.0f;
+static uint32_t g_kirby_frames, g_kirby_read_at;  // (kirby_cam_wide)
+static bool kirby_cam_wide(void);  // output aspect divided by 16:9 (1 = normal)
 
 void widescreen_set_factor(float f) { g_wide = f; }
 float widescreen_factor(void) { return g_wide; }
@@ -62,7 +64,8 @@ static bool g_allowed = true;
 static bool g_indoor;
 // (Kirby: only windows clearly wider than 16:9, runtime/nvn/output_scale.c reshape_shape)
 bool widescreen_allowed(void) {
-    return g_allowed && g_settings.aspect == ASPECT_UNLOCKED && !ENV("LARECOMP_NO_WIDESCREEN");
+    return g_allowed && g_settings.aspect == ASPECT_UNLOCKED && !ENV("LARECOMP_NO_WIDESCREEN") &&
+           (!game_is_kirby() || kirby_cam_wide());
 }
 void widescreen_set_allowed(bool on) { g_allowed = on; }
 
@@ -155,8 +158,14 @@ static bool level_is_interior(void) {
 // Kirby's camera aspect: one 16:9 float in its rodata, read by its only getter (main 0x7000184ca0, the cameras of
 // levels, the world map and cutscenes): widened with the window each frame (pace.c kirby_fps's per-frame hook).
 void kirby_wide_frame(void) {
+    g_kirby_frames++;
     *(float *)(uintptr_t)0x700039a650ull = 16.0f / 9.0f * g_wide;
 }
+// (runtime/gen/patches.cpp) Kirby's cameras that widen read the aspect getter each frame; the world map's camera
+// doesn't (its view stretched on ultrawide, player report 2026-11-27): without a read for a while, the render keeps
+// the 16:9 shape and the frame is shown boxed (widescreen_allowed).
+void rt_kirby_aspect_read(void) { __atomic_store_n(&g_kirby_read_at, g_kirby_frames, __ATOMIC_RELAXED); }
+static bool kirby_cam_wide(void) { return g_kirby_frames - __atomic_load_n(&g_kirby_read_at, __ATOMIC_RELAXED) < 30; }
 // (exec.c: a draw into Kirby's own 1920x1080 target - a movie or 2D menu - this frame: shown boxed)
 void widescreen_kirby_boxed(void) { extern uint64_t renderer_exec_frame(void); g_backdrop_frame = renderer_exec_frame(); }
 

@@ -550,9 +550,20 @@ PatchSet build_patches(const std::string &version_key) {
     PATCH_ADDRESSES = &address_table(version_key);
     T = Tables();
     PatchSet ps;
-    if (version_key == "kirby_1_0_0") return ps;  // (the Zelda patches and hooks below are Zelda code)
     auto &P = ps.patches;
     auto set = [&](uint64_t a, PatchFn f) { P[a] = f; };
+    if (version_key == "kirby_1_0_0") {
+        // Kirby's camera aspect getter (0x7000184ca0, the float kirby_wide_frame widens): the cameras that read it
+        // widen with the window; the world map's camera doesn't and came out stretched on ultrawide (player report
+        // 2026-11-27). The runtime notes each read and shows frames without a recent one in a 16:9 box.
+        P[0x7000184ca4ull] = [](Module &m, uint64_t a) -> std::string {
+            uint32_t w = m.image_word(a);
+            check(w == 0xbd465100u, a, w);  // ldr s0, [x8, #0x650]
+            return cat("{ extern void rt_kirby_aspect_read(void); rt_kirby_aspect_read(); } ",
+                       "c->v[0] = 0; c->v[0] = LD32(c->x[8] + 0x650);  /* ", ax(a), ": ldr s0, [x8, #0x650] */");
+        };
+        return ps;  // (the Zelda patches and hooks below are Zelda code)
+    }
 
     T.aspect_sites = {};
     for (int i = 0; i < 6; i++) T.aspect_sites[A(("ASPECT_SITES_" + std::to_string(i)).c_str())] = i;

@@ -340,6 +340,22 @@ static void kirby_fps(void) {
 #endif
 }
 
+// The pause opening's one-step frame (runtime/gen/patches.cpp 0x70000adf84): at 60 fps the next present shows the
+// frame before it again; 30 fps never shows that step.
+static volatile int kirby_pause_ghost;
+void rt_kirby_pause_set(int on) {
+#ifndef PACE_TEST
+    if (on && g_settings.fps_target != FPS_TARGET_30) kirby_pause_ghost = 1;
+#else
+    (void)on;
+#endif
+}
+bool pace_kirby_ghost_take(void) {
+    if (!kirby_pause_ghost) return false;
+    kirby_pause_ghost = 0;
+    return true;
+}
+
 void pace_frame(void) {
     kirby_fps();
     spike_test();

@@ -2233,6 +2233,8 @@ static void present_hooks(void) {
 }
 
 void backend_present(NvnTexture *t) {
+    extern bool pace_kirby_ghost_take(void);
+    if (pace_kirby_ghost_take() && g_last_presented) t = g_last_presented;  // (Kirby's pause opening: pace.c)
     g_last_presented = t;
     uint64_t frame = total_frames, t0 = plat_now_ns();
     if (rq_on()) rq_present(t, frame, true);

@@ -562,6 +562,15 @@ PatchSet build_patches(const std::string &version_key) {
             return cat("{ extern void rt_kirby_aspect_read(void); rt_kirby_aspect_read(); } ",
                        "c->v[0] = 0; c->v[0] = LD32(c->x[8] + 0x650);  /* ", ax(a), ": ldr s0, [x8, #0x650] */");
         };
+        // The pause script's setIsPause (Cmn.Pause.Proxy): the step that sets it draws the pause layout before its
+        // opening animation hides it, a frame the 30 fps mode never shows (two steps a frame) - at 60 a flash
+        // (player report 2026-11-28). The runtime presents the previous frame again in its place (pace.c).
+        P[0x70000adf84ull] = [](Module &m, uint64_t a) -> std::string {
+            uint32_t w = m.image_word(a);
+            check(w == 0x3900e128u, a, w);  // strb w8, [x9, #0x38]
+            return cat("{ extern void rt_kirby_pause_set(int); rt_kirby_pause_set((int)(c->x[8] & 0xff)); } ",
+                       "ST8(c->x[9] + 0x38, (uint32_t)c->x[8]);  /* ", ax(a), ": strb w8, [x9, #0x38] */");
+        };
         return ps;  // (the Zelda patches and hooks below are Zelda code)
     }
 

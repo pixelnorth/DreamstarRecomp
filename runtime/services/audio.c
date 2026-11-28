@@ -39,6 +39,8 @@ typedef struct {  // per channel resource, "VoiceUpdateState"
     int16_t hist[HIST];
     int16_t pred_scale, h0, h1;
     float bq[2][2];  // biquad filter state per voice filter
+    float last[MIXBUF_MAX];  // the last sample this channel put in each buffer of mix last_mix (depop)
+    int32_t last_mix;
 } ChanState;
 
 typedef struct {
@@ -69,6 +71,7 @@ typedef struct {
     uint32_t dest_splitter;
     float vol[MIXBUF_MAX * MIXBUF_MAX];
     float *buf;  // bufs * sample_count
+    float depop[MIXBUF_MAX];  // what stopped voices left in each buffer, fading out (depop)
 } Mix;
 
 typedef struct Effect Effect;
@@ -192,10 +195,13 @@ static int decode_voice(Voice *v, int ch, ChanState *cs, int16_t *out, int need)
     return y;
 }
 
+static void depop_take(Renderer *r, ChanState *cs);
+
 // UpdateParametersForCommandGeneration: returns whether the voice should be played this frame.
 static int voice_prepare(Renderer *r, Voice *v) {
     int nch = v->chans > 6 ? 6 : v->chans;
     if (v->is_new) {
+        for (int c = 0; c < nch; c++) depop_take(r, &r->chst[v->chan_ids[c] % r->voices]);
         for (int c = 0; c < nch; c++) memset(&r->chst[v->chan_ids[c] % r->voices], 0, sizeof(ChanState));
         v->prev_volume = v->volume;
         v->is_new = 0;
@@ -245,6 +251,17 @@ static int voice_prepare(Renderer *r, Voice *v) {
 }
 
 static Mix *find_mix(Renderer *r, int32_t id) { return id >= 0 && (uint32_t)id < r->nmix && r->mix[id].used ? &r->mix[id] : NULL; }
+
+// A voice that stops, or is cut, mid-waveform leaves a step to 0 in the mix: a click (a player: "every time I collect
+// a star ... or attacking there is this weird clicking noise"). The console's renderer hands the last sample to the
+// mix, which fades it out (DepopPrepare / DepopForMixBuffers, as Ryujinx has them).
+static void depop_take(Renderer *r, ChanState *cs) {
+    Mix *m = find_mix(r, cs->last_mix);
+    for (int b = 0; b < MIXBUF_MAX; b++) {
+        if (m) m->depop[b] += cs->last[b];
+        cs->last[b] = 0;
+    }
+}
 
 // ------------------------------------------------------------------ reverb (port of Ryujinx ReverbState/Command)
 typedef struct { float *buf; uint32_t sr, cur, last, count, max; } DelayLine;
@@ -502,8 +519,13 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
     for (uint32_t vi = 0; vi < r->voices; vi++) {
         Voice *v = &r->voice[vi];
         if (!v->in_use) continue;
+        int stopping = v->play_state == 2 || v->drop;  // (not a stream waiting for its next buffer: it goes on)
         int play = voice_prepare(r, v);
-        if (!play || v->wb_count == 0 || v->drop) continue;
+        if (!play || v->wb_count == 0 || v->drop) {
+            if (stopping)
+                for (int c = 0; c < v->chans && c < 6; c++) depop_take(r, &r->chst[v->chan_ids[c] % r->voices]);
+            continue;
+        }
         Mix *dst = find_mix(r, v->mix_id);
         float ratio = (float)v->rate / r->sample_rate * v->pitch;
         if (!(ratio > 0) || ratio > 8) ratio = 1;
@@ -550,7 +572,9 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
                 double e = (q1 * q1 + q2 * q2 - q1 * q2 * cw) * v->volume * v->volume / N;
                 hf[vi] += e;
             }
+            memset(cs->last, 0, sizeof cs->last);
             if (!dst) continue;
+            cs->last_mix = v->mix_id;
             static int solo = -2;
             if (solo == -2) solo = getenv("LARECOMP_AUDIO_SOLO") ? atoi(getenv("LARECOMP_AUDIO_SOLO")) : -1;
             if (solo >= 0 && (int)vi != solo) continue;
@@ -559,6 +583,7 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
                 if (g0 == 0 && g1 == 0) continue;
                 float *o = dst->buf + b * N, dg = (g1 - g0) / N;
                 for (uint32_t i = 0; i < N; i++) o[i] += smp[i] * (g0 + dg * i);
+                cs->last[b] = smp[N - 1] * g1;
             }
         }
         for (int c = 0; c < nch; c++) {
@@ -577,6 +602,19 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
                     r->voice[k].bq[1][0], r->voice[k].bq[1][3], r->voice[k].fmt, r->voice[k].rate, r->voice[k].pitch);
         LOG("\n");
         memset(hf, 0, sizeof hf);
+    }
+    // depop: what stopped voices left, fading out (Ryujinx's DepopForMixBuffers decay)
+    float decay = r->sample_rate == 48000 ? 0.962189f : 0.943695f;
+    for (uint32_t m = 0; m < r->nmix; m++) {
+        Mix *x = &r->mix[m];
+        if (!x->used || !x->buf) continue;
+        for (uint32_t b = 0; b < x->bufs && b < MIXBUF_MAX; b++) {
+            float d = x->depop[b];
+            if (fabsf(d) < 1e-3f) { x->depop[b] = 0; continue; }
+            float *o = x->buf + b * N;
+            for (uint32_t i = 0; i < N; i++) o[i] += d, d *= decay;
+            x->depop[b] = d;
+        }
     }
     // sub mixes, deepest first
     int depth[64] = {0};
@@ -632,12 +670,26 @@ static void render_frame(Renderer *r, float *out, int out_ch) {
     // old hard clip.
     static int hard = -1;
     if (hard < 0) hard = getenv("LARECOMP_AUDIO_CLIP") ? 1 : 0;
-    float g0 = r->lim > 0 ? r->lim : 1, g1 = g0 + (1 - g0) * 0.05f;
-    if (!hard && peak * g1 > 0.97f) g0 = g1 = 0.97f / peak;  // (no ramp down: the whole frame fits)
-    if (hard) g0 = g1 = 1;
-    r->lim = g1;
-    uint32_t n = N * (uint32_t)out_ch;
-    for (uint32_t k = 0; k < n; k++) out[k] = clampf(out[k] * (g0 + (g1 - g0) * (float)(k / out_ch) / N), -1, 1);
+    // The gain is worked out per sample: it slides down (1/64 a sample) ahead of each loud sample, as low as that
+    // sample needs, instead of a step to the frame's own need at the frame's start - the step clicked on loud effects
+    // (a 1.0.1 player: "clicking noise like the audio is cutting out" on stars, attacks).
+    float cur = r->lim > 0 ? r->lim : 1;
+    if (hard || (cur >= 1 && peak <= 0.97f)) {
+        for (uint32_t k = 0; k < N * (uint32_t)out_ch; k++) out[k] = clampf(out[k], -1, 1);
+        r->lim = 1;
+        return;
+    }
+    float g[4096], next = 1e9f;
+    for (int i = (int)N - 1; i >= 0; i--) {
+        float m = 0;
+        for (int c = 0; c < out_ch; c++) m = fmaxf(m, fabsf(out[i * out_ch + c]));
+        g[i] = next = fminf(m > 0.97f ? 0.97f / m : 1e9f, next + 1.0f / 64);
+    }
+    for (uint32_t i = 0; i < N; i++) {
+        cur = fminf(cur + (1 - cur) * 0.0002f, g[i]);  // (back to 1 over ~100 ms)
+        for (int c = 0; c < out_ch; c++) out[i * out_ch + c] = clampf(out[i * out_ch + c] * cur, -1, 1);
+    }
+    r->lim = cur;
 }
 
 // Output gain: menu volume times LARECOMP_AUDIO_GAIN (applied live).

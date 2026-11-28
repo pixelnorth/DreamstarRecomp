@@ -2,8 +2,8 @@
 # tools/linux/check_portable.sh <x86_64|aarch64> (after make appimage + make tarball, on a machine of that arch): the
 # data folder rules of runtime/paths.c, checked with the shipped files. No window or GPU: --list-settings reads the
 # settings from the data folder and exits (its log line "[paths] data: <folder>" says which one it used).
-#   - the tarball: its own folder (portable.txt), else ~/.local/share/lasrecomp once portable.txt is gone
-#   - the AppImage with <file>.AppImage.home next to it: <file>.AppImage.home/.local/share/lasrecomp
+#   - the tarball: its own folder (portable.txt), else ~/.local/share/dreamstarrecomp once portable.txt is gone
+#   - the AppImage with <file>.AppImage.home next to it: <file>.AppImage.home/.local/share/dreamstarrecomp
 #   - --data-dir: that folder
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -19,7 +19,7 @@ data_of() {  # command... -> the data folder it used
     local log="$T/run.log"
     "$@" --list-settings >/dev/null 2>"$log" || true
     # (without a terminal the log goes to the data folder's lasrecomp.log: look there too)
-    local logs=("$T"/*/lasrecomp*.log "$T"/*/*/lasrecomp*.log "$T"/*/*/.local/share/lasrecomp/lasrecomp*.log)
+    local logs=("$T"/*/lasrecomp*.log "$T"/*/*/lasrecomp*.log "$T"/*/*/.local/share/dreamstarrecomp/lasrecomp*.log)
     { cat "$log"; cat "${logs[@]}" 2>/dev/null; } | sed -n 's/^\[paths\] data: //p' | tail -1
     rm -f "${logs[@]}"
 }
@@ -33,7 +33,7 @@ D="$T/LAS Recomp"
 expect "tarball" "$(cd "$T" && data_of "$D/lasrecomp")" "$D"
 expect "tarball --data-dir" "$(data_of "$D/lasrecomp" --data-dir "$T/chosen")" "$T/chosen"
 rm "$D/portable.txt"
-expect "tarball without portable.txt" "$(data_of "$D/lasrecomp")" "$T/xdg/lasrecomp"
+expect "tarball without portable.txt" "$(data_of "$D/lasrecomp")" "$T/xdg/dreamstarrecomp"
 
 mkdir "$T/ai"
 cp "$APP" "$T/ai/game.AppImage"
@@ -44,5 +44,5 @@ got=$(data_of "$T/ai/game.AppImage")
 if [ -z "$got" ]; then  # (the AppImage didn't run: what it said)
     "$T/ai/game.AppImage" --list-settings 2>&1 | tail -20 || true
 fi
-expect "AppImage with .home" "$got" "$T/ai/game.AppImage.home/.local/share/lasrecomp"
+expect "AppImage with .home" "$got" "$T/ai/game.AppImage.home/.local/share/dreamstarrecomp"
 echo "data folder rules: ok"

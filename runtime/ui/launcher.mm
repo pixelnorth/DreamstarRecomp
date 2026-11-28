@@ -119,7 +119,7 @@ static void save_png(id<MTLTexture> tex, const char *path) {
 // test build (a pre-release for a few players to try a fix) is test-<name>: the start screen says "Test build <name>",
 // and it previews LARECOMP_TEST_OF - the update check offers that release (or a later one) as soon as it's out, so its
 // players move to it.
-#define LARECOMP_VERSION "v0.6.0"
+#define LARECOMP_VERSION "v1.0.2"
 #define LARECOMP_TEST_OF "v0.6.0"
 // Experimental builds (the retired experimental.yml set these; Experimental moved to nightly): the build's time (YYYYMMDDHHMM, UTC; 0: not an
 // experimental build). They only look for a newer experimental build of their own platform, never a normal release.
@@ -170,8 +170,8 @@ extern "C" const char *larecomp_version(void) { return LARECOMP_VERSION; }  // (
 // v0.<n>.<m> the same as beta_<n>.<m>; other tags (the alpha_* ones) are ignored. (Beta 5 and earlier only know
 // beta_<n>: they never offer a hotfix; builds before Beta 5.3 don't know v0.<n>.<m> either.) Offline / no curl /
 // anything unexpected: nothing is shown.
-#define RELEASES_URL "https://api.github.com/repos/peiikai/LASRecomp/releases?per_page=100"
-#define RELEASE_PAGE "https://github.com/peiikai/LASRecomp/releases/tag/"
+#define RELEASES_URL "https://api.github.com/repos/pixelnorth/DreamstarRecomp/releases?per_page=100"
+#define RELEASE_PAGE "https://github.com/pixelnorth/DreamstarRecomp/releases/tag/"
 
 #include "update_notes.h"  // tag_rank, tag_label; the update dialog's changelog
 #include "update.h"
@@ -2376,15 +2376,16 @@ static void *prepare_cli_report(void *) {
 static volatile sig_atomic_t g_prep_cli_stop;
 static void prepare_cli_signal(int) { g_prep_cli_stop = 1, g_cancel_build = true, g_prep_skip = 1; }
 static bool kirby_files(const std::string &root);  // (the Kirby start screen, below)
+static std::string kirby_why(const std::string &root);
 extern "C" int launcher_prepare_cli(const char *root, const char *src) {
     g_root = root;
     signal(SIGINT, prepare_cli_signal);
     signal(SIGTERM, prepare_cli_signal);
     setenv("LARECOMP_HIDDEN", "1", 1);  // (the window only holds the GPU device: never shown)
-    if (game_is_kirby() || (src && *src && kirby_files(src))) {
+    if (game_is_kirby() || (src && *src && (kirby_files(src) || !game_version_of(src)))) {
         std::string dir = src && *src ? src : g_settings.game_dir;
         if (!kirby_files(dir)) {
-            rt_cli_print("error No Kirby Star Allies game files (exefs and romfs) in that folder.\n");
+            rt_cli_print(("error " + kirby_why(dir) + "\n").c_str());
             return 1;
         }
         g_root = dir;
@@ -2455,6 +2456,18 @@ static bool kirby_files(const std::string &root) {
 static const char *const KIRBY_NOT_BUILT = "The game code isn't built for these files.";
 // The game code, built on the player's machine from their own files (runtime/gamebuild.c: the generator in the app and
 // the bundled compiler) into <game folder>/lasgame.dll - the release carries none of it. One build at a time.
+// Why a folder isn't Kirby game files: none there, or another version (a player: "Doesn't like my copy" - files
+// dumped with the update merged in have the update's program).
+static std::string kirby_why(const std::string &root) {
+    char hex[41];
+    GameMainKind k = game_main_build_id((root + "/exefs/main").c_str(), hex);
+    if (k == GAME_MAIN_MISSING) return "No Kirby Star Allies game files here: this folder needs exefs (with main) and romfs.";
+    if (k == GAME_MAIN_NOT_NSO) return "exefs/main isn't the game's program: dump the game files again.";
+    static std::string logged;  // (the start screen asks every frame)
+    if (logged != hex) logged = hex, fprintf(stderr, "[launcher] game files: unsupported build ID %s\n", hex);
+    return "This copy is another version of the game (build ID " + std::string(hex, 16) +
+           "). Dreamstar Recomp needs Kirby Star Allies 1.0.0: the base game alone, without its update.";
+}
 static std::atomic<int> g_kirby_build{0};  // 0 idle, 1 building, 2 done, 3 failed
 static void *kirby_build_thread(void *) {
     g_job.clear(), g_job_failed = false, g_cancel_build = false;
@@ -2471,7 +2484,7 @@ static void kirby_build_start(void) {
     else g_kirby_build = 3;
 }
 static std::string kirby_status(const std::string &root) {
-    if (!kirby_files(root)) return "No Kirby Star Allies game files in this folder.";
+    if (!kirby_files(root)) return kirby_why(root);
     if (!file_exists(root + "/romfs")) return "The romfs folder is missing.";
     if (!gamelib_present(root.c_str())) return KIRBY_NOT_BUILT;
     return "";
